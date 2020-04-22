@@ -1,13 +1,18 @@
 package main
 
 import (
+  "bytes"
   "fmt"
+  "io/ioutil"
+  "log"
   "os"
   "os/exec"
-  "strings"
-  "io/ioutil"
+  "path/filepath"
   "regexp"
-  "bytes"
+  "strconv"
+  "strings"
+  "syscall"
+  "time"
   "./nvm/web"
   "./nvm/arch"
   "./nvm/file"
@@ -16,7 +21,7 @@ import (
 )
 
 const (
-  NvmVersion = "1.1.3"
+  NvmVersion = "1.1.8"
 )
 
 type Environment struct {
@@ -32,10 +37,13 @@ type Environment struct {
   verifyssl       bool
 }
 
+var home = filepath.Clean(os.Getenv("NVM_HOME")+"\\settings.txt")
+var symlink = filepath.Clean(os.Getenv("NVM_SYMLINK"))
+
 var env = &Environment{
-  settings: os.Getenv("NVM_HOME")+"\\settings.txt",
+  settings: home,
   root: "",
-  symlink: os.Getenv("NVM_SYMLINK"),
+  symlink: symlink,
   arch: os.Getenv("PROCESSOR_ARCHITECTURE"),
   node_mirror: "",
   npm_mirror: "",
@@ -50,7 +58,7 @@ func main() {
   detail := ""
   procarch := arch.Validate(env.arch)
 
-  Setup()
+  setup()
 
   // Capture any additional arguments
   if len(args) > 2 {
@@ -107,50 +115,41 @@ func main() {
         env.proxy = detail
         saveSettings()
       }
-    case "update": update()
+
+    //case "update": update()
     case "node_mirror": setNodeMirror(detail)
     case "npm_mirror": setNpmMirror(detail)
     default: help()
   }
 }
 
-func setNodeMirror(detail string) {
-	env.node_mirror = detail
+// ===============================================================
+// BEGIN | CLI functions
+// ===============================================================
+func setNodeMirror(uri string) {
+	env.node_mirror = uri
 	saveSettings()
 }
 
-func setNpmMirror(detail string) {
-	env.npm_mirror = detail
+func setNpmMirror(uri string) {
+	env.npm_mirror = uri
 	saveSettings()
 }
 
+/*
 func update() {
-//  cmd := exec.Command("cmd", "/d", "echo", "testing")
-//  var output bytes.Buffer
-//  var _stderr bytes.Buffer
-//  cmd.Stdout = &output
-//  cmd.Stderr = &_stderr
-//  perr := cmd.Run()
-//  if perr != nil {
-//      fmt.Println(fmt.Sprint(perr) + ": " + _stderr.String())
-//      return
-//  }
+  cmd := exec.Command("cmd", "/d", "echo", "testing")
+  var output bytes.Buffer
+  var _stderr bytes.Buffer
+  cmd.Stdout = &output
+  cmd.Stderr = &_stderr
+  perr := cmd.Run()
+  if perr != nil {
+      fmt.Println(fmt.Sprint(perr) + ": " + _stderr.String())
+      return
+  }
 }
-
-func CheckVersionExceedsLatest(version string) bool{
-  //content := web.GetRemoteTextFile("http://nodejs.org/dist/latest/SHASUMS256.txt")
-  url := web.GetFullNodeUrl("latest/SHASUMS256.txt");
-  content := web.GetRemoteTextFile(url)
-  re := regexp.MustCompile("node-v(.+)+msi")
-  reg := regexp.MustCompile("node-v|-x.+")
-	latest := reg.ReplaceAllString(re.FindString(content),"")
-
-	if version <= latest {
-		return false
-	} else {
-		return true
-	}
-}
+*/
 
 func install(version string, cpuarch string) {
   args := os.Args
@@ -191,9 +190,15 @@ func install(version string, cpuarch string) {
     version = reg.ReplaceAllString(re.FindString(content),"")
   }
 
-  version = cleanVersion(version)
+  // if the user specifies only the major version number then install the latest
+  // version of the major version number
+  if len(version) == 1 {
+    version = findLatestSubVersion(version)
+  } else {
+    version = cleanVersion(version)
+  }
 
-  if CheckVersionExceedsLatest(version) {
+  if checkVersionExceedsLatest(version) {
   	fmt.Println("Node.js v"+version+" is not yet released or available.")
   	return
   }
@@ -205,17 +210,15 @@ func install(version string, cpuarch string) {
 
   // Check to see if the version is already installed
   if !node.IsVersionInstalled(env.root,version,cpuarch) {
-
     if !node.IsVersionAvailable(version){
-      fmt.Println("Version "+version+" is not available. If you are attempting to download a \"just released\" version,")
-      fmt.Println("it may not be recognized by the nvm service yet (updated hourly). If you feel this is in error and")
-      fmt.Println("you know the version exists, please visit http://github.com/coreybutler/nodedistro and submit a PR.")
+      url := web.GetFullNodeUrl("index.json")
+      fmt.Println("\nVersion "+version+" is not available.\n\nThe complete list of available versions can be found at " + url)
       return
     }
 
     // Make the output directories
-    os.Mkdir(env.root+"\\v"+version,os.ModeDir)
-    os.Mkdir(env.root+"\\v"+version+"\\node_modules",os.ModeDir)
+    os.Mkdir(filepath.Join(env.root, "v"+version), os.ModeDir)
+    os.Mkdir(filepath.Join(env.root, "v"+version, "node_modules"), os.ModeDir)
 
     // Warn the user if they're attempting to install without verifying the remote SSL cert
     if !env.verifyssl {
@@ -226,7 +229,7 @@ func install(version string, cpuarch string) {
     if (cpuarch == "32" || cpuarch == "all") && !node.IsVersionInstalled(env.root,version,"32") {
       success := web.GetNodeJS(env.root,version,"32");
       if !success {
-        os.RemoveAll(env.root+"\\v"+version+"\\node_modules")
+        os.RemoveAll(filepath.Join(env.root, "v"+version, "node_modules"))
         fmt.Println("Could not download node.js v"+version+" 32-bit executable.")
         return
       }
@@ -234,13 +237,13 @@ func install(version string, cpuarch string) {
     if (cpuarch == "64" || cpuarch == "all") && !node.IsVersionInstalled(env.root,version,"64") {
       success := web.GetNodeJS(env.root,version,"64");
       if !success {
-        os.RemoveAll(env.root+"\\v"+version+"\\node_modules")
+        os.RemoveAll(filepath.Join(env.root, "v"+version, "node_modules"))
         fmt.Println("Could not download node.js v"+version+" 64-bit executable.")
         return
       }
     }
 
-    if file.Exists(env.root+"\\v"+version+"\\node_modules\\npm") {
+    if file.Exists(filepath.Join(env.root, "v"+version, "node_modules", "npm")) {
       return
     }
 
@@ -251,24 +254,64 @@ func install(version string, cpuarch string) {
       fmt.Printf("Installing npm v"+npmv+"...")
 
       // new temp directory under the nvm root
-      tempDir := env.root + "\\temp"
+      tempDir := filepath.Join(env.root, "temp")
 
       // Extract npm to the temp directory
-      file.Unzip(tempDir+"\\npm-v"+npmv+".zip",tempDir+"\\nvm-npm")
+      err := file.Unzip(filepath.Join(tempDir, "npm-v"+npmv+".zip"), filepath.Join(tempDir, "nvm-npm"))
 
       // Copy the npm and npm.cmd files to the installation directory
-      os.Rename(tempDir+"\\nvm-npm\\npm-"+npmv+"\\bin\\npm",env.root+"\\v"+version+"\\npm")
-      os.Rename(tempDir+"\\nvm-npm\\npm-"+npmv+"\\bin\\npm.cmd",env.root+"\\v"+version+"\\npm.cmd")
-      os.Rename(tempDir+"\\nvm-npm\\npm-"+npmv,env.root+"\\v"+version+"\\node_modules\\npm")
+      tempNpmBin := filepath.Join(tempDir, "nvm-npm", "cli-"+npmv, "bin")
 
-      // Remove the temp directory
-      // may consider keep the temp files here
-      os.RemoveAll(tempDir)
+      // Support npm < 6.2.0
+      if file.Exists(tempNpmBin) == false {
+        tempNpmBin = filepath.Join(tempDir, "nvm-npm", "npm-"+npmv, "bin")
+      }
 
-      fmt.Println("\n\nInstallation complete. If you want to use this version, type\n\nnvm use "+version)
+      if file.Exists(tempNpmBin) == false {
+        log.Fatal("Failed to extract npm. Could not find " + tempNpmBin)
+      }
+
+      // Standard npm support
+      os.Rename(filepath.Join(tempNpmBin, "npm"), filepath.Join(env.root, "v"+version, "npm"))
+      os.Rename(filepath.Join(tempNpmBin, "npm.cmd"),filepath.Join(env.root, "v"+version, "npm.cmd"))
+
+      // npx support
+      if _, err := os.Stat(filepath.Join(tempNpmBin, "npx")); err == nil {
+        os.Rename(filepath.Join(tempNpmBin, "npx"), filepath.Join(env.root, "v"+version, "npx"))
+        os.Rename(filepath.Join(tempNpmBin, "npx.cmd"), filepath.Join(env.root, "v"+version, "npx.cmd"))
+      }
+
+      npmSourcePath := filepath.Join(tempDir, "nvm-npm", "npm-"+npmv)
+
+      if file.Exists(npmSourcePath) == false {
+        npmSourcePath = filepath.Join(tempDir, "nvm-npm", "cli-"+npmv)
+      }
+
+      moveNpmErr := os.Rename(npmSourcePath, filepath.Join(env.root, "v"+version, "node_modules", "npm"))
+      if moveNpmErr != nil {
+        // sometimes Windows can take some time to enable access to large amounts of files after unzip, use exponential backoff to wait until it is ready
+        for _, i := range [5]int{1, 2, 4, 8, 16} {
+          time.Sleep(time.Duration(i)*time.Second)
+          moveNpmErr = os.Rename(npmSourcePath, filepath.Join(env.root, "v"+version, "node_modules", "npm"))
+          if moveNpmErr == nil { break }
+        }
+
+      }
+
+      if err == nil && moveNpmErr == nil {
+        // Remove the temp directory
+        // may consider keep the temp files here
+        os.RemoveAll(tempDir)
+
+        fmt.Println("\n\nInstallation complete. If you want to use this version, type\n\nnvm use "+version)
+      } else if moveNpmErr != nil {
+        fmt.Println("Error: Unable to move directory "+npmSourcePath+" to node_modules: "+moveNpmErr.Error())
+      } else {
+        fmt.Println("Error: Unable to install NPM: "+err.Error());
+      }
     } else {
       fmt.Println("Could not download npm for node v"+version+".")
-      fmt.Println("Please visit https://github.com/npm/npm/releases/tag/v"+npmv+" to download npm.")
+      fmt.Println("Please visit https://github.com/npm/cli/releases/tag/v"+npmv+" to download npm.")
       fmt.Println("It should be extracted to "+env.root+"\\v"+version)
     }
 
@@ -300,13 +343,14 @@ func uninstall(version string) {
     fmt.Printf("Uninstalling node v"+version+"...")
     v, _ := node.GetCurrentVersion()
     if v == version {
-      cmd := exec.Command(env.root+"\\elevate.cmd", "cmd", "/C", "rmdir", env.symlink)
-      cmd.Run()
+      runElevated(fmt.Sprintf(`"%s" cmd /C rmdir "%s"`,
+        filepath.Join(env.root, "elevate.cmd"),
+        filepath.Clean(env.symlink)))
     }
-    e := os.RemoveAll(env.root+"\\v"+version)
+    e := os.RemoveAll(filepath.Join(env.root, "v"+version))
     if e != nil {
       fmt.Println("Error removing node v"+version)
-      fmt.Println("Manually remove "+env.root+"\\v"+version+".")
+      fmt.Println("Manually remove " + filepath.Join(env.root, "v"+version) + ".")
     } else {
       fmt.Printf(" done")
     }
@@ -316,22 +360,13 @@ func uninstall(version string) {
   return
 }
 
-func cleanVersion(version string) string {
-  re := regexp.MustCompile("\\d+.\\d+.\\d+")
-  matched := re.FindString(version)
-
-  if len(matched) == 0 {
-    re = regexp.MustCompile("\\d+.\\d+")
-    matched = re.FindString(version)
-    if len(matched) == 0 {
-      matched = version + ".0.0"
-    } else {
-      matched = matched + ".0"
-    }
-    fmt.Println(matched)
-  }
-
-  return matched
+func findLatestSubVersion(version string) string {
+	url := web.GetFullNodeUrl("latest-v" + version + ".x" + "/SHASUMS256.txt")
+	content := web.GetRemoteTextFile(url)
+	re := regexp.MustCompile("node-v(.+)+msi")
+	reg := regexp.MustCompile("node-v|-x.+")
+	latest := reg.ReplaceAllString(re.FindString(content), "")
+	return latest
 }
 
 func use(version string, cpuarch string) {
@@ -361,37 +396,29 @@ func use(version string, cpuarch string) {
     return
   }
 
-  // Create or update the symlink
+  // Remove symlink if it already exists
   sym, _ := os.Stat(env.symlink)
   if sym != nil {
-    cmd := exec.Command(env.root+"\\elevate.cmd", "cmd", "/C", "rmdir", env.symlink)
-    var output bytes.Buffer
-    var _stderr bytes.Buffer
-    cmd.Stdout = &output
-    cmd.Stderr = &_stderr
-    perr := cmd.Run()
-    if perr != nil {
-        fmt.Println(fmt.Sprint(perr) + ": " + _stderr.String())
-        return
+    if !runElevated(fmt.Sprintf(`"%s" cmd /C rmdir "%s"`,
+      filepath.Join(env.root, "elevate.cmd"),
+      filepath.Clean(env.symlink))) {
+      return
     }
   }
 
-  c := exec.Command(env.root+"\\elevate.cmd", "cmd", "/C", "mklink", "/D", env.symlink, env.root+"\\v"+version)
-  var out bytes.Buffer
-  var stderr bytes.Buffer
-  c.Stdout = &out
-  c.Stderr = &stderr
-  err := c.Run()
-  if err != nil {
-      fmt.Println(fmt.Sprint(err) + ": " + stderr.String())
-      return
+  // Create new symlink
+  if !runElevated(fmt.Sprintf(`"%s" cmd /C mklink /D "%s" "%s"`,
+    filepath.Join(env.root, "elevate.cmd"),
+    filepath.Clean(env.symlink),
+    filepath.Join(env.root, "v"+version))) {
+    return
   }
 
   // Use the assigned CPU architecture
   cpuarch = arch.Validate(cpuarch)
-  nodepath   := env.root+"\\v"+version+"\\node.exe"
-  node32path := env.root+"\\v"+version+"\\node32.exe"
-  node64path := env.root+"\\v"+version+"\\node64.exe"
+  nodepath   := filepath.Join(env.root, "v"+version, "node.exe")
+  node32path := filepath.Join(env.root, "v"+version, "node32.exe")
+  node64path := filepath.Join(env.root, "v"+version, "node64.exe")
   node32exists := file.Exists(node32path)
   node64exists := file.Exists(node64path)
   nodeexists   := file.Exists(nodepath)
@@ -439,6 +466,7 @@ func list(listtype string) {
     inuse, a := node.GetCurrentVersion()
 
     v := node.GetInstalled(env.root)
+
     for i := 0; i < len(v); i++ {
       version := v[i]
       isnode, _ := regexp.MatchString("v",version)
@@ -510,7 +538,7 @@ func list(listtype string) {
     table.AppendBulk(data) // Add Bulk Data
     table.Render()
 
-    fmt.Println("\nThis is a partial list. For a complete list, visit https://nodejs.org/download/release")
+    fmt.Println("\nThis is a partial list. For a complete list, visit https://nodejs.org/download/releases")
   }
 }
 
@@ -534,8 +562,12 @@ func enable() {
 }
 
 func disable() {
-  cmd := exec.Command(env.root+"\\elevate.cmd", "cmd", "/C", "rmdir", env.symlink)
-  cmd.Run()
+  if !runElevated(fmt.Sprintf(`"%s" cmd /C rmdir "%s"`,
+    filepath.Join(env.root, "elevate.cmd"),
+    filepath.Clean(env.symlink))) {
+    return
+  }
+
   fmt.Println("nvm disabled")
 }
 
@@ -548,13 +580,13 @@ func help() {
   fmt.Println("                                 Optionally specify whether to install the 32 or 64 bit version (defaults to system arch).")
   fmt.Println("                                 Set [arch] to \"all\" to install 32 AND 64 bit versions.")
   fmt.Println("                                 Add --insecure to the end of this command to bypass SSL validation of the remote download server.")
-    fmt.Println("  nvm list [available]         : List the node.js installations. Type \"available\" at the end to see what can be installed. Aliased as ls.")
+  fmt.Println("  nvm list [available]         : List the node.js installations. Type \"available\" at the end to see what can be installed. Aliased as ls.")
   fmt.Println("  nvm on                       : Enable node.js version management.")
   fmt.Println("  nvm off                      : Disable node.js version management.")
   fmt.Println("  nvm proxy [url]              : Set a proxy to use for downloads. Leave [url] blank to see the current proxy.")
   fmt.Println("                                 Set [url] to \"none\" to remove the proxy.")
   fmt.Println("  nvm node_mirror [url]        : Set the node mirror. Defaults to https://nodejs.org/dist/. Leave [url] blank to use default url.")
-  fmt.Println("  nvm npm_mirror [url]         : Set the npm mirror. Defaults to https://github.com/npm/npm/archive/. Leave [url] blank to default url.")
+  fmt.Println("  nvm npm_mirror [url]         : Set the npm mirror. Defaults to https://github.com/npm/cli/archive/. Leave [url] blank to default url.")
   fmt.Println("  nvm uninstall <version>      : The version must be a specific version.")
 //  fmt.Println("  nvm update                   : Automatically update nvm to the latest version.")
   fmt.Println("  nvm use [version] [arch]     : Switch to use the specified version. Optionally specify 32/64bit architecture.")
@@ -564,12 +596,56 @@ func help() {
   fmt.Println("  nvm version                  : Displays the current running version of nvm for Windows. Aliased as v.")
   fmt.Println(" ")
 }
+// ===============================================================
+// END | CLI functions
+// ===============================================================
+
+// ===============================================================
+// BEGIN | Utility functions
+// ===============================================================
+func checkVersionExceedsLatest(version string) bool{
+  //content := web.GetRemoteTextFile("http://nodejs.org/dist/latest/SHASUMS256.txt")
+  url := web.GetFullNodeUrl("latest/SHASUMS256.txt");
+  content := web.GetRemoteTextFile(url)
+  re := regexp.MustCompile("node-v(.+)+msi")
+  reg := regexp.MustCompile("node-v|-x.+")
+  latest := reg.ReplaceAllString(re.FindString(content),"")
+  var vArr = strings.Split(version,".")
+  var lArr = strings.Split(latest, ".")
+  for index := range lArr {
+    lat,_ := strconv.Atoi(lArr[index])
+    ver,_ := strconv.Atoi(vArr[index])
+    //Should check for valid input (checking for conversion errors) but this tool is made to trust the user
+    if ver < lat {
+      return false
+    } else if ver > lat {
+      return true
+    }
+  }
+  return false
+}
+
+func cleanVersion(version string) string {
+  re := regexp.MustCompile("\\d+.\\d+.\\d+")
+  matched := re.FindString(version)
+
+  if len(matched) == 0 {
+    re = regexp.MustCompile("\\d+.\\d+")
+    matched = re.FindString(version)
+    if len(matched) == 0 {
+      matched = version + ".0.0"
+    } else {
+      matched = matched + ".0"
+    }
+    fmt.Println(matched)
+  }
+
+  return matched
+}
 
 // Given a node.js version, returns the associated npm version
 func getNpmVersion(nodeversion string) string {
-
   _, _, _, _, _, npm := node.GetAvailable()
-
   return npm[nodeversion]
 }
 
@@ -580,9 +656,39 @@ func updateRootDir(path string) {
     return
   }
 
-  env.root = path
+  currentRoot := env.root
+  env.root = filepath.Clean(path)
+
+  // Copy command files
+  os.Link(filepath.Clean(currentRoot + "/elevate.cmd"), filepath.Clean(env.root + "/elevate.cmd"))
+  os.Link(filepath.Clean(currentRoot + "/elevate.vbs"), filepath.Clean(env.root + "/elevate.vbs"))
+
   saveSettings()
-  fmt.Println("\nRoot has been set to "+path)
+
+  if currentRoot != env.root {
+    fmt.Println("\nRoot has been changed from " + currentRoot + " to " + path)
+  }
+}
+
+func runElevated(command string) bool {
+  c := exec.Command("cmd") // dummy executable that actually needs to exist but we'll overwrite using .SysProcAttr
+
+  // Based on the official docs, syscall.SysProcAttr.CmdLine doesn't exist.
+  // But it does and is vital:
+  // https://github.com/golang/go/issues/15566#issuecomment-333274825
+  // https://medium.com/@felixge/killing-a-child-process-and-all-of-its-children-in-go-54079af94773
+  c.SysProcAttr = &syscall.SysProcAttr{CmdLine: command}
+
+  var stderr bytes.Buffer
+  c.Stderr = &stderr
+
+  err := c.Run()
+  if err != nil {
+    fmt.Println(fmt.Sprint(err) + ": " + stderr.String())
+    return false
+  }
+
+  return true
 }
 
 func saveSettings() {
@@ -591,7 +697,27 @@ func saveSettings() {
   ioutil.WriteFile(env.settings, []byte(content), 0644)
 }
 
-func Setup() {
+// NOT USED?
+/*
+func useArchitecture(a string) {
+  if strings.ContainsAny("32",os.Getenv("PROCESSOR_ARCHITECTURE")) {
+    fmt.Println("This computer only supports 32-bit processing.")
+    return
+  }
+  if a == "32" || a == "64" {
+    env.arch = a
+    saveSettings()
+    fmt.Println("Set to "+a+"-bit mode")
+  } else {
+    fmt.Println("Cannot set architecture to "+a+". Must be 32 or 64 are acceptable values.")
+  }
+}
+*/
+// ===============================================================
+// END | Utility functions
+// ===============================================================
+
+func setup() {
   lines, err := file.ReadLines(env.settings)
   if err != nil {
     fmt.Println("\nERROR",err)
@@ -602,9 +728,9 @@ func Setup() {
   for _, line := range lines {
     line = strings.Trim(line, " \r\n")
     if strings.HasPrefix(line, "root:") {
-      env.root = strings.TrimSpace(regexp.MustCompile("^root:").ReplaceAllString(line, ""))
+      env.root = filepath.Clean(strings.TrimSpace(regexp.MustCompile("^root:").ReplaceAllString(line, "")))
     } else if strings.HasPrefix(line, "originalpath:") {
-      env.originalpath = strings.TrimSpace(regexp.MustCompile("^originalpath:").ReplaceAllString(line, ""))
+      env.originalpath = filepath.Clean(strings.TrimSpace(regexp.MustCompile("^originalpath:").ReplaceAllString(line, "")))
     } else if strings.HasPrefix(line, "originalversion:") {
       env.originalversion = strings.TrimSpace(regexp.MustCompile("^originalversion:").ReplaceAllString(line, ""))
     } else if strings.HasPrefix(line, "arch:") {

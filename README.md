@@ -1,24 +1,21 @@
-**NOTICE:** This is not the same thing as [nvm](https://github.com/creationix/nvm), which is a completely separate project for Mac/Linux only.
+The npm/Microsoft/Google recommended **Node.js version manager for _Windows_**.
 
-Like this project? Let people know with a [tweet](https://twitter.com/intent/tweet?hashtags=nodejs&original_referer=http%3A%2F%2F127.0.0.1%3A91%2F&text=Check%20out%20NVM%20for%20Windows!&tw_p=tweetbutton&url=http%3A%2F%2Fgithub.com%2Fcoreybutler%2Fnvm-windows&via=goldglovecb). Better yet, [become a Patron](https://patreon.com/coreybutler)!
+# This is not the same thing as [nvm](https://github.com/creationix/nvm), which is a completely separate project for Mac/Linux only.
 
-## NOTICE: SEEKING CORE CONTRIBUTORS & MAINTAINERS
+Like this project? Let people know with a [tweet](https://twitter.com/intent/tweet?hashtags=nodejs&original_referer=http%3A%2F%2F127.0.0.1%3A91%2F&text=Check%20out%20NVM%20for%20Windows!&tw_p=tweetbutton&url=http%3A%2F%2Fgithub.com%2Fcoreybutler%2Fnvm-windows&via=goldglovecb). 
 
-_Are you multilingual?_
+Better yet, **click the "Sponsor" button** at the top of this screen. Patreon sponsors will receive patron-only update posts.
 
-I am particularly interested in finding people who can speak something other than English. Several problems have come up with non-latin character sets (Chinese, Japanese, Arabic, etc). I am also interested in producing language packs/translations for the installers. If you are interested in translating, please [signup here](https://coreybutler.typeform.com/to/ybqT6F).
 
-**I am seeking donations to help pay for a lingohub.com account** to make life easier for translators! Please consider becoming a [becoming a patron](https://patreon.com/coreybutler) to support this.
+## NOTICES
 
-_Are you outside of the US/UK/Canada?_
+(2019-09-06) I am actively working on new Github actions to build releases. There are several great contributions in master (which contains the to-be-released 1.1.8 version), but I've always had to build these by hand.... and as many of you have noticed, my time has been extremely limited for quite awhile. The time consuming part is preparing the NSIS build, but once that is automated, it should be significantly easier for people to contribute changes _and actually see them released_.
 
-Custom mirroring capabilities are available in the master branch, but I would like to work with folks in different geographic regions to assure node is accessible everywhere.
+Older notices have moved to the [notices wiki entry](https://github.com/coreybutler/nvm-windows/wiki/Notices).
 
-_Other (Anywhere)_
+## Common Issues & Resolutions
 
-The core concepts of this version manager are pretty simple, so the core code base is pretty focused/simple. I've done some work to make this project available on all operating systems. The only reason it's been so slow to release is anticipation of an explosion of new installers (chocolatey, homebrew, rpm, .deb, .msi, etc). I've partnered up with BitRock to simplify creation of some of these, but the BitRock installers don't support all of these.
-
-Of course, I would also love to have additional maintainers. If you're new to Go, that's OK - I was too, and that's what code reviews are for.
+Please see the [Common Issues](https://github.com/coreybutler/nvm-windows/wiki/Common-Issues) page before posting an issue.
 
 # Node Version Manager (nvm) for Windows
 
@@ -26,6 +23,7 @@ Of course, I would also love to have additional maintainers. If you're new to Go
 
 ![Issues](https://img.shields.io/github/issues/coreybutler/nvm-windows.svg)
 ![Stars](https://img.shields.io/github/stars/coreybutler/nvm-windows.svg)
+[![Open Source Helpers](https://www.codetriage.com/coreybutler/nvm-windows/badges/users.svg)](https://www.codetriage.com/coreybutler/nvm-windows)
 
 Manage multiple installations of node.js on a Windows computer.
 
@@ -41,24 +39,38 @@ bleeding edge version without uninstalling the stable version of node, this util
 
 ### Installation & Upgrades
 
-It comes with an installer (and uninstaller), because getting it should be easy. Please note, you need to uninstall any existing versions of node.js before installing NVM for Windows. Also delete any existing nodejs installation directories (e.g., "C:\Program Files\nodejs") that might remain. NVM's generated symlink will not overwrite an existing (even empty) installation directory.
+#### Uninstall existing node
 
-You should also delete the existing npm install location (e.g. "C:\Users\<user>\AppData\Roaming\npm") so that the nvm install location will be correctly used instead. After install, reinstalling global utilities (e.g. gulp) will have to be done for each installed version of node:
+Please note, you need to uninstall any existing versions of node.js before installing NVM for Windows. Also delete any existing nodejs installation directories (e.g., "C:\Program Files\nodejs") that might remain. NVM's generated symlink will not overwrite an existing (even empty) installation directory.
 
-`nvm use 4.4.0`
-`npm install gulp-cli -g`
-`nvm use 0.10.33`
-`npm install gulp-cli -g`
+#### Uninstall existing npm
 
+You should also delete the existing npm install location (e.g. "C:\Users\\&lt;user&gt;\\AppData\Roaming\npm"), so that the nvm install location will be correctly used instead. Backup the global `npmrc` config (e.g. `C:\Users\&lt;user&gt;\AppData\Roaming\npm\etc\npmrc`), if you have some important settings there, or copy the settings to the user config `C:\Users\&lt;user&gt;\.npmrc`.
+
+#### Install nvm-windows
+
+nvm-windows comes with an installer (and uninstaller), because getting it should be easy. 
+
+#### Reinstall any global utilities
+
+After install, reinstalling global utilities (e.g. gulp) will have to be done for each installed version of node:
+```
+nvm use 4.4.0
+npm install gulp-cli -g
+nvm use 0.10.33
+npm install gulp-cli -g
+```
 [Download the latest installer from the releases](https://github.com/coreybutler/nvm/releases).
 
 ![NVM for Windows Installer](http://i.imgur.com/x8EzjSC.png)
 
-**To upgrade**, run the new installer. It will safely overwrite the files it needs to update without touching your node.js installations.
-Make sure you use the same installation and symlink folder. If you originally installed to the default locations, you just need to click
-"next" on each window until it finishes.
+### Upgrading nvm-windows
+
+**To upgrade nvm-windows**, run the new installer. It will safely overwrite the files it needs to update without touching your node.js installations. Make sure you use the same installation and symlink folder. If you originally installed to the default locations, you just need to click "next" on each window until it finishes.
 
 ### Usage
+
+**nvm-windows runs in an Admin shell**. You'll need to start `powershell` or Command Prompt as Administrator to use nvm-windows
 
 NVM for Windows is a command line tool. Simply type `nvm` in the console for help. The basic commands are:
 
@@ -69,7 +81,7 @@ NVM for Windows is a command line tool. Simply type `nvm` in the console for hel
 - `nvm off`: Disable node.js version management (does not uninstall anything).
 - `nvm proxy [url]`: Set a proxy to use for downloads. Leave `[url]` blank to see the current proxy. Set `[url]` to "none" to remove the proxy.
 - `nvm uninstall <version>`: Uninstall a specific version.
-- `nvm use <version> [arch]`: Switch to use the specified version. Optionally specify 32/64bit architecture. `nvm use <arch>` will continue using the selected version, but switch to 32/64 bit mode based on the value supplied to `<arch>`.
+- `nvm use <version> [arch]`: Switch to use the specified version. Optionally specify 32/64bit architecture. `nvm use <arch>` will continue using the selected version, but switch to 32/64 bit mode based on the value supplied to `<arch>`. For information about using `use` in a specific directory (or using `.nvmrc`), please refer to [issue #16](https://github.com/coreybutler/nvm-windows/issues/16).
 - `nvm root <path>`: Set the directory where nvm should store different versions of node.js. If `<path>` is not set, the current root will be displayed.
 - `nvm version`: Displays the current running version of NVM for Windows.
 - `nvm node_mirror <node_mirror_url>`: Set the node mirror.People in China can use *https://npm.taobao.org/mirrors/node/*
@@ -77,14 +89,35 @@ NVM for Windows is a command line tool. Simply type `nvm` in the console for hel
 
 ### Gotcha!
 
-Please note that any global npm modules you may have installed are **not** shared between the various versions of node.js you have installed.
-Additionally, some npm modules may not be supported in the version of node you're using, so be aware of your environment as you work.
+Please note that any global npm modules you may have installed are **not** shared between the various versions of node.js you have installed. Additionally, some npm modules may not be supported in the version of node you're using, so be aware of your environment as you work.
 
 ### Antivirus
 
-Users have reported some problems using antivirus, specifically McAffee. It appears the antivirus software is manipulating access to the VBScript engine. See [issue #133](https://github.com/coreybutler/nvm-windows/issues/133) for details and resolution.
+Users have reported some problems using antivirus, specifically McAfee. It appears the antivirus software is manipulating access to the VBScript engine. See [issue #133](https://github.com/coreybutler/nvm-windows/issues/133) for details and resolution.
+
+As of 1.1.7, the executable and installation files are code-signed by [Ecor Ventures LLC](https://ecorventures.com)/[Author.io](https://author.io). This should help prevent false positives with most antivirus software.
+
+### Using Yarn
+
+**tldr;** `npm i -g yarn`
+
+See the [wiki](https://github.com/coreybutler/nvm-windows/wiki/Common-Issues#how-do-i-use-yarn-with-nvm-windows) for details.
+
+### Build from source
+
+- Install go from http://golang.org
+- Download source / Git Clone the repo
+- Change GOARCH to amd64 in build.bat if you feel like building a 64-bit executable
+- Fire up a Windows command prompt and change directory to project dir
+- Execute `go get github.com/blang/semver`
+- Execute `go get github.com/olekukonko/tablewriter`
+- Execute `build.bat`
+- Check the `dist`directory for generated setup program. 
+
 
 ---
+
+
 
 ## Why another version manager?
 
@@ -140,6 +173,19 @@ I chose Go because it is cross-platform, felt like less overhead than Java, has 
 
 MIT.
 
+## Sponsors
+
+<table cellpadding="10" cellspacing="0" border="0">
+  <tr>
+    <td><a href="https://metadoc.io"><img src="https://github.com/coreybutler/staticassets/raw/master/sponsors/metadoclogobig.png" width="200px"/></a></td>
+    <td><a href="https://butlerlogic.com"><img src="https://github.com/coreybutler/staticassets/raw/master/sponsors/butlerlogic_logo.png" width="200px"/></a></td>
+  </tr>
+</table>
+
 ## Thanks
 
-Thanks to everyone who has submitted issues on and off Github, made suggestions, and generally helped make this a better project. Special thanks to [@vkbansal](https://github.com/vkbansal), who has actively provided feedback throughout the releases. Thanks also go to [@rainabba](https://github.com/rainabba) and [@sullivanpt](https://github.com/sullivanpt) for getting Node v4 support integrated.
+Thanks to everyone who has submitted issues on and off Github, made suggestions, and generally helped make this a better project. Special thanks to 
+
+- [@vkbansal](https://github.com/vkbansal), who provided significant early feedback throughout the early releases.
+- [@rainabba](https://github.com/rainabba) and [@sullivanpt](https://github.com/sullivanpt) for getting Node v4 support integrated.
+- [@s-h-a-d-o-w](https://github.com/s-h-a-d-o-w) who resolved the longstanding space escaping issue in path names ([#355](https://github.com/coreybutler/nvm-windows/pull/355)).
